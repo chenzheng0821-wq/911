@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reflex Arena</title>
+
+<style>
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+}
+
+body{
+font-family:Arial,sans-serif;
+background:radial-gradient(circle,#1f2937,#0f172a);
+overflow:hidden;
+color:white;
+cursor:crosshair;
+}
+
+#game{
+width:100vw;
+height:100vh;
+position:relative;
+}
+
+#hud{
+position:fixed;
+top:15px;
+left:15px;
+right:15px;
+display:flex;
+justify-content:space-between;
+font-size:22px;
+font-weight:bold;
+z-index:999;
+}
+
+#combo{
+color:#ff9800;
+}
+
+.crosshair{
+position:fixed;
+left:50%;
+top:50%;
+transform:translate(-50%,-50%);
+font-size:30px;
+pointer-events:none;
+z-index:998;
+}
+
+.target{
+position:absolute;
+border-radius:50%;
+cursor:pointer;
+display:flex;
+justify-content:center;
+align-items:center;
+font-size:40px;
+user-select:none;
+}
+
+.normal{
+background:
+radial-gradient(circle,
+white 0 20%,
+red 20% 40%,
+white 40% 60%,
+red 60% 80%,
+white 80%);
+}
+
+.gold{
+background:gold;
+box-shadow:0 0 20px gold;
+}
+
+.bomb{
+background:#111;
+box-shadow:0 0 20px red;
+}
+
+.time{
+background:#00bfff;
+box-shadow:0 0 20px cyan;
+}
+
+#menu,
+#result{
+position:absolute;
+inset:0;
+display:flex;
+justify-content:center;
+align-items:center;
+flex-direction:column;
+text-align:center;
+background:rgba(0,0,0,.4);
+}
+
+#result{
+display:none;
+}
+
+button{
+padding:15px 30px;
+font-size:20px;
+border:none;
+border-radius:10px;
+cursor:pointer;
+margin-top:20px;
+}
+
+.hit{
+position:absolute;
+font-size:28px;
+color:#00ff88;
+pointer-events:none;
+animation:float .8s forwards;
+}
+
+@keyframes float{
+to{
+transform:translateY(-50px);
+opacity:0;
+}
+}
+</style>
+</head>
+<body>
+
+<div id="game">
+
+<div id="hud">
+<div>⏱️ <span id="time">60</span>s</div>
+<div>🏆 <span id="score">0</span></div>
+<div id="combo">🔥 Combo 0</div>
+</div>
+
+<div class="crosshair">+</div>
+
+<div id="menu">
+<h1>🎯 Reflex Arena</h1>
+<br>
+<p>60秒内获得尽可能高的分数</p>
+<button id="startBtn">开始游戏</button>
+</div>
+
+<div id="result"></div>
+
+</div>
+
+<script>
+
+const game=document.getElementById("game");
+const scoreEl=document.getElementById("score");
+const comboEl=document.getElementById("combo");
+const timeEl=document.getElementById("time");
+const result=document.getElementById("result");
+
+let score=0;
+let combo=0;
+let bestCombo=0;
+let hits=0;
+let misses=0;
+let reactions=[];
+
+let gameRunning=false;
+let timeLeft=60;
+let targetTimeout;
+let timer;
+
+function difficulty(){
+
+if(timeLeft>40){
+return {size:90,life:1200};
+}
+
+if(timeLeft>20){
+return {size:70,life:900};
+}
+
+return {size:50,life:600};
+
+}
+
+function randomType(){
+
+let r=Math.random();
+
+if(r<0.70) return "normal";
+if(r<0.85) return "gold";
+if(r<0.93) return "time";
+
+return "bomb";
+
+}
+
+function spawnTarget(){
+
+if(!gameRunning) return;
+
+const diff=difficulty();
+
+const target=document.createElement("div");
+
+const type=randomType();
+
+target.classList.add("target",type);
+
+target.dataset.type=type;
+
+target.style.width=diff.size+"px";
+target.style.height=diff.size+"px";
+
+let icon="";
+
+if(type==="gold") icon="⭐";
+if(type==="bomb") icon="💣";
+if(type==="time") icon="⚡";
+
+target.innerHTML=icon;
+
+let x=Math.random()*(window.innerWidth-diff.size);
+let y=Math.random()*(window.innerHeight-diff.size);
+
+target.style.left=x+"px";
+target.style.top=y+"px";
+
+game.appendChild(target);
+
+let start=performance.now();
+
+let moveInterval;
+
+if(timeLeft<20){
+
+moveInterval=setInterval(()=>{
+
+x+=Math.random()*20-10;
+y+=Math.random()*20-10;
+
+x=Math.max(0,Math.min(window.innerWidth-diff.size,x));
+y=Math.max(50,Math.min(window.innerHeight-diff.size,y));
+
+target.style.left=x+"px";
+target.style.top=y+"px";
+
+},50);
+
+}
+
+target.onclick=()=>{
+
+let rt=performance.now()-start;
+reactions.push(rt);
+
+hits++;
+
+let add=0;
+
+if(type==="normal") add=1;
+if(type==="gold") add=5;
+
+if(type==="time"){
+add=2;
+timeLeft+=3;
+}
+
+if(type==="bomb"){
+add=-5;
+combo=0;
+}
+else{
+combo++;
+bestCombo=Math.max(bestCombo,combo);
+}
+
+if(combo>=20) add*=3;
+else if(combo>=10) add*=2;
+
+score+=add;
+
+scoreEl.textContent=score;
+comboEl.textContent="🔥 Combo "+combo;
+
+showHit(add,x,y);
+
+clearTimeout(targetTimeout);
+clearInterval(moveInterval);
+
+target.remove();
+
+setTimeout(spawnTarget,200);
+
+};
+
+targetTimeout=setTimeout(()=>{
+
+misses++;
+combo=0;
+comboEl.textContent="🔥 Combo 0";
+
+clearInterval(moveInterval);
+
+target.remove();
+
+spawnTarget();
+
+},diff.life);
+
+}
+
+function showHit(text,x,y){
+
+let hit=document.createElement("div");
+
+hit.className="hit";
+
+if(text>0)
+hit.innerHTML="+"+text;
+else
+hit.innerHTML=text;
+
+hit.style.left=x+"px";
+hit.style.top=y+"px";
+
+game.appendChild(hit);
+
+setTimeout(()=>hit.remove(),800);
+
+}
+
+function startGame(){
+
+document.getElementById("menu").style.display="none";
+
+gameRunning=true;
+
+spawnTarget();
+
+timer=setInterval(()=>{
+
+timeLeft--;
+
+timeEl.textContent=timeLeft;
+
+if(timeLeft<=0){
+
+endGame();
+
+}
+
+},1000);
+
+}
+
+function rank(avg){
+
+if(avg<180) return "🏆 S+ Reaction God";
+if(avg<220) return "🥇 S Elite Shooter";
+if(avg<260) return "🥈 A FPS Veteran";
+if(avg<320) return "🥉 B Good Reflexes";
+
+return "🙂 C Keep Training";
+
+}
+
+function endGame(){
+
+gameRunning=false;
+
+clearInterval(timer);
+
+let total=hits+misses;
+
+let accuracy=
+total===0?0:
+((hits/total)*100).toFixed(1);
+
+let avg=
+reactions.length?
+Math.round(
+reactions.reduce((a,b)=>a+b,0)
+/
+reactions.length
+)
+:0;
+
+result.style.display="flex";
+
+result.innerHTML=`
+<h1>🏁 游戏结束</h1>
+<br>
+<h2>总分：${score}</h2>
+<h2>命中：${hits}</h2>
+<h2>漏失：${misses}</h2>
+<h2>命中率：${accuracy}%</h2>
+<h2>平均反应：${avg} ms</h2>
+<h2>最高连击：${bestCombo}</h2>
+<br>
+<h2>${rank(avg)}</h2>
+<button onclick="location.reload()">再来一次</button>
+`;
+
+}
+
+document.getElementById("startBtn")
+.addEventListener("click",startGame);
+
+</script>
+
+</body>
+</html>
